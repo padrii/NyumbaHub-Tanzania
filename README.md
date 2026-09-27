@@ -1,2 +1,13 @@
-# NyumbaHub-Tanzania
-NyumbaHub Tanzania - Real estate rental platform with tenant, landlord, service provider, and admin roles. Features property verification, service provider verification, Firebase backend, and strict media upload policy.
+# NyumbaHub Tanzania
+
+Flutter + Firebase MVP for tenants, landlords, service providers and admins.
+
+## Setup
+
+```bash
+flutterfire configure
+flutter pub get
+flutter run
+```
+
+Replace the Firebase placeholders in `lib/firebase_options.dart`, or run `flutterfire configure` to generate platform credentials. Enable Email/Password Authentication, Firestore and Storage in Firebase Console.
