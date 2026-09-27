@@ -1,8 +1,16 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'firebase_options.dart';
 
-void main() async {
+import 'firebase_options.dart';
+import 'models/models.dart';
+import 'screens/admin_dashboard_screen.dart';
+import 'screens/landlord_home_screen.dart';
+import 'screens/provider_home_screen.dart';
+import 'screens/tenant_home_screen.dart';
+import 'services/firebase_service.dart';
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const NyumbaHubApp());
@@ -12,39 +20,116 @@ class NyumbaHubApp extends StatelessWidget {
   const NyumbaHubApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'NyumbaHub Tanzania',
-    debugShowCheckedModeBanner: false,
-    theme: ThemeData(useMaterial3: true, colorSchemeSeed: const Color(0xFF0B6B4F)),
-    home: const LoginPage(),
-  );
+        title: 'NyumbaHub Tanzania',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(useMaterial3: true, colorSchemeSeed: const Color(0xFF0B6B4F)),
+        home: const AuthWrapper(),
+      );
+}
+
+class AuthWrapper extends StatelessWidget {
+  const AuthWrapper({super.key});
+  @override
+  Widget build(BuildContext context) => StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, auth) {
+          if (auth.connectionState == ConnectionState.waiting) {
+            return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          }
+          if (!auth.hasData) return const LoginPage();
+          return FutureBuilder<AppUser?>(
+            future: AuthService().getCurrentUser(),
+            builder: (context, user) {
+              if (user.connectionState == ConnectionState.waiting) {
+                return const Scaffold(body: Center(child: CircularProgressIndicator()));
+              }
+              return user.data == null ? const LoginPage() : HomePage(user: user.data!);
+            },
+          );
+        },
+      );
 }
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
-  @override State<LoginPage> createState() => _LoginPageState();
+  @override
+  State<LoginPage> createState() => _LoginPageState();
 }
+
 class _LoginPageState extends State<LoginPage> {
   final email = TextEditingController();
   final password = TextEditingController();
-  bool register = false;
+  final name = TextEditingController();
+  final phone = TextEditingController();
+  bool registering = false;
   bool loading = false;
+  UserRole role = UserRole.tenant;
+
   Future<void> submit() async {
+    if (email.text.trim().isEmpty || password.text.length < 6 || (registering && name.text.trim().isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Jaza taarifa sahihi. Password iwe na herufi 6+')));
+      return;
+    }
     setState(() => loading = true);
     try {
-      if (register) {
-        final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(email: email.text.trim(), password: password.text);
-        await FirebaseFirestore.instance.collection('users').doc(credential.user!.uid).set({'email': email.text.trim(), 'role': 'tenant', 'is_verified': false, 'created_at': FieldValue.serverTimestamp()});
+      if (registering) {
+        await AuthService().register(email: email.text, password: password.text, name: name.text, phone: phone.text, role: role);
       } else {
-        await FirebaseAuth.instance.signInWithEmailAndPassword(email: email.text.trim(), password: password.text);
+        await AuthService().login(email: email.text, password: password.text);
       }
-      if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const DashboardPage()));
-    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()))); }
-    finally { if (mounted) setState(() => loading = false); }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
   }
-  @override Widget build(BuildContext context) => Scaffold(body: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 440), child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [const Icon(Icons.home_work, size: 64, color: Color(0xFF0B6B4F)), const Text('NyumbaHub Tanzania', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)), const SizedBox(height: 24), TextField(controller: email, decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder())), const SizedBox(height: 12), TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder())), const SizedBox(height: 16), SizedBox(width: double.infinity, child: FilledButton(onPressed: loading ? null : submit, child: Text(register ? 'Jisajili' : 'Ingia'))), TextButton(onPressed: () => setState(() => register = !register), child: Text(register ? 'Nina akaunti tayari' : 'Fungua akaunti'))]))));
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                const Icon(Icons.home_work, size: 64, color: Color(0xFF0B6B4F)),
+                const Text('NyumbaHub Tanzania', textAlign: TextAlign.center, style: TextStyle(fontSize: 25, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 24),
+                if (registering) TextField(controller: name, decoration: const InputDecoration(labelText: 'Jina kamili', border: OutlineInputBorder())),
+                if (registering) const SizedBox(height: 12),
+                TextField(controller: email, decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder())),
+                const SizedBox(height: 12),
+                TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder())),
+                if (registering) ...[
+                  const SizedBox(height: 12),
+                  TextField(controller: phone, decoration: const InputDecoration(labelText: 'Simu', border: OutlineInputBorder())),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<UserRole>(value: role, decoration: const InputDecoration(labelText: 'Aina ya akaunti', border: OutlineInputBorder()), items: UserRole.values.where((r) => r != UserRole.admin).map((r) => DropdownMenuItem(value: r, child: Text(r.name))).toList(), onChanged: (v) => setState(() => role = v!)),
+                ],
+                const SizedBox(height: 20),
+                FilledButton(onPressed: loading ? null : submit, child: loading ? const CircularProgressIndicator() : Text(registering ? 'Jisajili' : 'Ingia')),
+                TextButton(onPressed: loading ? null : () => setState(() => registering = !registering), child: Text(registering ? 'Nina akaunti tayari' : 'Fungua akaunti')),
+              ]),
+            ),
+          ),
+        ),
+      );
 }
 
-class DashboardPage extends StatelessWidget {
-  const DashboardPage({super.key});
-  @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('NyumbaHub Tanzania'), actions: [IconButton(onPressed: () => FirebaseAuth.instance.signOut().then((_) => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginPage()))), icon: const Icon(Icons.logout))]), body: ListView(padding: const EdgeInsets.all(16), children: [Text('Karibu NyumbaHub', style: Theme.of(context).textTheme.headlineMedium), const SizedBox(height: 16), ...['Tafuta nyumba za kupanga', 'Nyumba nilizohifadhi', 'Book house viewing', 'Omba huduma ya fundi', 'Ongea na landlord'].map((title) => Card(child: ListTile(leading: const Icon(Icons.arrow_forward_ios), title: Text(title), onTap: () {}))) ]);
+class HomePage extends StatelessWidget {
+  const HomePage({super.key, required this.user});
+  final AppUser user;
+  @override
+  Widget build(BuildContext context) {
+    final screen = switch (user.role) {
+      UserRole.tenant => TenantHomeScreen(user: user),
+      UserRole.landlord => LandlordHomeScreen(user: user),
+      UserRole.provider => ProviderHomeScreen(user: user),
+      UserRole.admin => AdminDashboardScreen(user: user),
+    };
+    return Scaffold(
+      appBar: AppBar(title: Text('Habari, ${user.name}'), actions: [IconButton(onPressed: () => FirebaseAuth.instance.signOut(), icon: const Icon(Icons.logout))]),
+      body: screen,
+    );
+  }
 }
