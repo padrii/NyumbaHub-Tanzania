@@ -1,0 +1,31 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isLandlordOrProviderOrAdmin() {
+      return signedIn() && (
+        request.auth.token.role == 'landlord' ||
+        request.auth.token.role == 'provider' ||
+        request.auth.token.role == 'admin'
+      );
+    }
+
+    match /listings/{ownerId}/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if isLandlordOrProviderOrAdmin() && request.auth.uid == ownerId;
+    }
+
+    match /services/{ownerId}/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if isLandlordOrProviderOrAdmin() && request.auth.uid == ownerId;
+    }
+
+    match /profiles/{userId}/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if signedIn() && request.auth.uid == userId;
+    }
+  }
+}
